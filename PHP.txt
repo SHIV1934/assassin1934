@@ -1,0 +1,220 @@
+1.0
+/ SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract ShortDAG {
+    mapping(uint => uint[]) public edges;
+    mapping(uint => bool) public exists;
+
+    event Node(uint id);
+    event Link(uint from, uint to);
+
+    function addNode(uint id) public {
+        require(!exists[id], "Already exists");
+        exists[id] = true;
+        emit Node(id);
+    }
+
+    function addEdge(uint from, uint to) public {
+        require(exists[from] && exists[to], "Nodes must exist");
+        require(from != to, "No self-link");
+        require(!hasPath(to, from), "Cycle detected");
+
+        edges[from].push(to);
+        emit Link(from, to);
+    }
+
+    function getLinks(uint id) public view returns (uint[] memory) {
+        return edges[id];
+    }
+
+    function hasPath(uint from, uint to) internal view returns (bool) {
+        if (from == to) ret
+        
+        urn true;
+        for (uint i = 0; i < edges[from].length; i++) {
+            if (hasPath(edges[from][i], to)) return true;
+        }
+        return false;
+    }
+}
+
+
+
+
+
+2.
+/ SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract FabricChannelCreator {
+    event ChannelRequested(string channelName, string org1, string org2);
+
+    function requestChannelCreation(
+        string memory channelName,
+        string memory org1,
+        string memory org2
+    ) public {
+        emit ChannelRequested(channelName, org1, org2);
+    }
+}
+
+3.
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+/// @title SimpleChannel - a lightweight on-chain "channel" for posts + tipping
+/// @notice Demonstrates storage, events, access control, payable functions, and view helpers
+contract SimpleChannel {
+    address public owner;
+    uint256 public postCount;
+
+    struct Post {
+        uint256 id;
+        address author;
+        string content;
+        uint256 timestamp;
+        uint256 tipsWei;
+        bool deleted;
+    }
+
+    // postId -> Post
+    mapping(uint256 => Post) private posts;
+
+    // events
+    event PostCreated(uint256 indexed id, address indexed author, string content, uint256 timestamp);
+    event PostTipped(uint256 indexed id, address indexed tipper, uint256 amount);
+    event PostDeleted(uint256 indexed id, address indexed deletedBy);
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only owner");
+        _;
+    }
+
+    modifier exists(uint256 _id) {
+        require(_id > 0 && _id <= postCount, "Post does not exist");
+        require(!posts[_id].deleted, "Post deleted");
+        _;
+    }
+
+    constructor() {
+        owner = msg.sender;
+        postCount = 0;
+    }
+
+    /// @notice Create a new post in the channel
+    /// @param _content The text content of the post
+    function createPost(string calldata _content) external {
+        require(bytes(_content).length > 0, "Content empty");
+
+        postCount += 1;
+        posts[postCount] = Post({
+            id: postCount,
+            author: msg.sender,
+            content: _content,
+            timestamp: block.timestamp,
+            tipsWei: 0,
+            deleted: false
+        });
+
+        emit PostCreated(postCount, msg.sender, _content, block.timestamp);
+    }
+
+    /// @notice Tip a post (send ETH to the author)
+    /// @param _id The post id
+    function tipPost(uint256 _id) external payable exists(_id) {
+        require(msg.value > 0, "Tip must be > 0");
+        Post storage p = posts[_id];
+        p.tipsWei += msg.value;
+
+        // forward tip to author
+        (bool sent, ) = p.author.call{value: msg.value}("");
+        require(sent, "Transfer failed");
+
+        emit PostTipped(_id, msg.sender, msg.value);
+    }
+
+    /// @notice Mark a post deleted (only owner can permanently delete)
+    /// @param _id The post id
+    function deletePost(uint256 _id) external onlyOwner exists(_id) {
+        posts[_id].deleted = true;
+        emit PostDeleted(_id, msg.sender);
+    }
+
+    /// @notice Get details of a post
+    /// @param _id The post id
+    function getPost(uint256 _id) external view returns (
+        uint256 id,
+        address author,
+        string memory content,
+        uint256 timestamp,
+        uint256 tipsWei,
+        bool deleted
+    ) {
+        Post storage p = posts[_id];
+        return (p.id, p.author, p.content, p.timestamp, p.tipsWei, p.deleted);
+    }
+
+    /// @notice Get multiple posts (range) - useful for simple frontends
+    /// @param _from starting id (inclusive)
+    /// @param _to ending id (inclusive)
+    function getPostsRange(uint256 _from, uint256 _to) external view returns (Post[] memory) {
+        if (_from < 1) _from = 1;
+        if (_to > postCount) _to = postCount;
+        require(_from <= _to, "Invalid range");
+
+        uint256 len = _to - _from + 1;
+        Post[] memory arr = new Post[](len);
+        uint256 idx = 0;
+        for (uint256 i = _from; i <= _to; ++i) {
+            arr[idx] = posts[i];
+            idx++;
+        }
+        return arr;
+    }
+
+    // allow the contract to receive ETH (not used but good to have)
+    receive() external payable {}
+    fallback() external payable {}
+}
+
+
+
+
+4.
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract BalanceTransfer {
+    // Keep track of balances for users inside the contract
+    mapping(address => uint256) public balances;
+
+    // Deposit ether into contract
+    function deposit() public payable {
+        balances[msg.sender] += msg.value;
+    }
+
+    // Transfer balance from sender to another address
+    function transfer(address payable _to, uint256 _amount) public {
+        require(balances[msg.sender] >= _amount, "Insufficient balance");
+
+        // Deduct from sender
+        balances[msg.sender] -= _amount;
+
+        // Add to receiver
+        balances[_to] += _amount;
+    }
+
+    // Withdraw ether from contract
+    function withdraw(uint256 _amount) public {
+        require(balances[msg.sender] >= _amount, "Not enough balance");
+
+        balances[msg.sender] -= _amount;
+        payable(msg.sender).transfer(_amount);
+    }
+
+    // Check contract balance
+    function getContractBalance() public view returns (uint256) {
+        return address(this).balance;
+    }
+}
